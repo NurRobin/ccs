@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
-# Build a .deb package for cc
+# Build a .deb package for ccs
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION=$(grep -oP 'CC_VERSION="\K[^"]+' "$SCRIPT_DIR/cc")
-PKG_NAME="cc"
+VERSION=$(grep -oP 'CCS_VERSION="\K[^"]+' "$SCRIPT_DIR/ccs")
+PKG_NAME="ccs"
 BUILD_DIR=$(mktemp -d)
 
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
-# Package structure
 mkdir -p "$BUILD_DIR/DEBIAN"
 mkdir -p "$BUILD_DIR/usr/local/bin"
+mkdir -p "$BUILD_DIR/usr/share/man/man1"
 
-# Install script
-install -m 755 "$SCRIPT_DIR/cc" "$BUILD_DIR/usr/local/bin/cc"
+install -m 755 "$SCRIPT_DIR/ccs" "$BUILD_DIR/usr/local/bin/ccs"
+gzip -9n -c "$SCRIPT_DIR/ccs.1" > "$BUILD_DIR/usr/share/man/man1/ccs.1.gz"
 
-# Control file with current version
 sed "s/^Version:.*/Version: ${VERSION}/" "$SCRIPT_DIR/debian/control" > "$BUILD_DIR/DEBIAN/control"
 
-# Build
 OUTPUT="${SCRIPT_DIR}/dist/${PKG_NAME}_${VERSION}_all.deb"
 mkdir -p "$SCRIPT_DIR/dist"
 dpkg-deb --build --root-owner-group "$BUILD_DIR" "$OUTPUT"

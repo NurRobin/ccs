@@ -3,7 +3,7 @@ name: Release & APT Repo
 on:
   push:
     branches: [main]
-    paths: [cc]
+    paths: [ccs]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=$(grep -oP 'CC_VERSION="\K[^"]+' cc)
+          VERSION=$(grep -oP 'CCS_VERSION="\K[^"]+' ccs)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Check if release exists
@@ -52,7 +52,7 @@ jobs:
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
             --generate-notes \
-            dist/cc_${VERSION}_all.deb
+            dist/ccs_${VERSION}_all.deb
 
   update-apt-repo:
     needs: release
@@ -84,13 +84,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p repo/pool/main/c/cc
-          rm -f repo/pool/main/c/cc/*.deb
+          mkdir -p repo/pool/main/c/ccs
+          rm -f repo/pool/main/c/ccs/*.deb
           REPO="${{ github.repository }}"
           for tag in $(gh release list --repo "$REPO" --limit 100 --json tagName -q '.[].tagName'); do
-            gh release download "$tag" --repo "$REPO" --pattern '*.deb' --dir repo/pool/main/c/cc/ || true
+            gh release download "$tag" --repo "$REPO" --pattern '*.deb' --dir repo/pool/main/c/ccs/ || true
           done
-          ls -la repo/pool/main/c/cc/
+          ls -la repo/pool/main/c/ccs/
 
       - name: Generate APT repo metadata
         run: |
@@ -102,8 +102,8 @@ jobs:
 
           cd dists/stable
           apt-ftparchive release \
-            -o APT::FTPArchive::Release::Origin="cc" \
-            -o APT::FTPArchive::Release::Label="cc" \
+            -o APT::FTPArchive::Release::Origin="ccs" \
+            -o APT::FTPArchive::Release::Label="ccs" \
             -o APT::FTPArchive::Release::Suite="stable" \
             -o APT::FTPArchive::Release::Codename="stable" \
             -o APT::FTPArchive::Release::Architectures="all" \
@@ -121,31 +121,29 @@ jobs:
 
       - name: Create install page
         run: |
-          cat > repo/index.html << 'HTML'
+          REPO_URL="https://${{ github.repository_owner }}.github.io/ccs"
+          cat > repo/index.html <<EOF
           <!DOCTYPE html>
-          <html><head><title>cc — Claude Code session manager</title>
+          <html><head><title>ccs - Claude Code Session manager</title>
           <style>body{font-family:system-ui;max-width:700px;margin:4em auto;padding:0 1em;color:#e0e0e0;background:#1a1a2e}
           pre{background:#16213e;padding:1em;border-radius:6px;overflow-x:auto}code{color:#00d4aa}
           a{color:#4ea8de}h1{color:#fff}</style></head>
-          <body><h1>cc</h1><p>Claude Code tmux session manager.</p>
-          <h2>Install</h2><pre><code># Import signing key
-          curl -fsSL https://NurRobin.github.io/cc/pubkey.gpg \
-            | sudo gpg --dearmor -o /etc/apt/keyrings/cc.gpg
+          <body><h1>ccs</h1><p>Claude Code Session manager.</p>
+          <h2>Install</h2><pre><code>curl -fsSL ${REPO_URL}/pubkey.gpg \\
+            | sudo gpg --dearmor -o /etc/apt/keyrings/ccs.gpg
 
-          # Add repository
-          echo "deb [arch=all signed-by=/etc/apt/keyrings/cc.gpg] https://NurRobin.github.io/cc stable main" \
-            | sudo tee /etc/apt/sources.list.d/cc.list
+          echo "deb [arch=all signed-by=/etc/apt/keyrings/ccs.gpg] ${REPO_URL} stable main" \\
+            | sudo tee /etc/apt/sources.list.d/ccs.list
 
-          # Install
-          sudo apt update && sudo apt install cc</code></pre>
-          <h2>Usage</h2><pre><code>cc new [name]        Start a Claude Code session
-          cc ls                List sessions
-          cc a [name]          Attach (fuzzy match)
-          cc kill [name]       Kill a session
-          cc schedule add      Schedule a recurring job
-          cc log               View cron execution log</code></pre>
-          <p><a href="https://github.com/NurRobin/cc">GitHub</a></p></body></html>
-          HTML
+          sudo apt update && sudo apt install ccs</code></pre>
+          <h2>Usage</h2><pre><code>ccs new [name]        Start a Claude Code session
+          ccs ls                List sessions
+          ccs a [name]          Attach (fuzzy match)
+          ccs kill [name]       Kill a session
+          ccs schedule add      Schedule a recurring job
+          ccs log               View cron execution log</code></pre>
+          <p><a href="https://github.com/${{ github.repository }}">GitHub</a></p></body></html>
+          EOF
 
       - name: Push gh-pages
         run: |

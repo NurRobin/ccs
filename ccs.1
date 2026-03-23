@@ -1,0 +1,77 @@
+.TH CCS 1 "March 2026" "ccs 2.0.0" "User Commands"
+.SH NAME
+ccs \- Claude Code Session manager
+.SH SYNOPSIS
+.B ccs
+.RI [ command ]
+.RI [ args... ]
+.SH DESCRIPTION
+.B ccs
+manages Claude Code sessions inside dedicated tmux sessions with
+descriptions, fuzzy-match attach, and scheduled cron jobs.
+.PP
+Sessions run on a dedicated tmux socket
+.RB ( ccs ),
+isolated from regular tmux usage. Mouse scrolling, truecolor, and
+50k-line scrollback are configured automatically.
+.SH COMMANDS
+.TP
+.BR new " [" name "] [" description ]
+Start a new Claude Code session. Name defaults to the current
+directory basename. Names must match [a\-zA\-Z0\-9_\-].
+.TP
+.B ls
+List all active sessions grouped by working directory.
+.TP
+.BR a ", " attach " [" name ]
+Attach to a session. Supports partial, case\-insensitive matching.
+If only one session exists, attaches directly.
+.TP
+.BR kill " " name
+Kill a session (with confirmation).
+.TP
+.B schedule add
+Interactive wizard to create a scheduled cron job.
+Prompts for name, prompt source, frequency, working directory,
+and skip\-if\-running behavior.
+.TP
+.B schedule ls
+List all scheduled jobs with status.
+.TP
+.BR "schedule rm" " " name
+Remove a scheduled job and its crontab entry.
+.TP
+.B log
+Show cron execution history (last 40 entries).
+.TP
+.BR \-v ", " \-\-version
+Print version.
+.SH SMART DISPATCH
+Running
+.B ccs
+with no arguments behaves contextually:
+no sessions shows help, one session attaches directly,
+multiple sessions lists them.
+.SH FILES
+.TP
+.I ~/.config/ccs/sessions.meta
+Session metadata (name, description, directory).
+.TP
+.I ~/.config/ccs/schedules.meta
+Scheduled job definitions.
+.TP
+.I ~/.config/ccs/cron.log
+Cron execution log.
+.SH ENVIRONMENT
+.TP
+.B XDG_CONFIG_HOME
+Base directory for configuration (default: ~/.config).
+.SH DEPENDENCIES
+.BR tmux (1),
+.BR bash (1),
+.BR cron (8)
+.SH AUTHOR
+Robin <robin@nurrobin.de>
+.SH SEE ALSO
+.BR tmux (1),
+.BR crontab (5)

@@ -1,13 +1,13 @@
-Package: cc
-Version: 1.0.0
+Package: ccs
+Version: 2.0.0
 Section: utils
 Priority: optional
 Architecture: all
 Depends: bash (>= 4.0), tmux (>= 3.0), cron
 Recommends: claude-code
 Maintainer: Robin <robin@nurrobin.de>
-Homepage: https://github.com/robinr2/cc
-Description: Claude Code tmux session manager
- Manages Claude Code sessions inside tmux with descriptions,
- fuzzy attach, scheduled cron jobs, and built-in tmux defaults
- for mouse scrolling, truecolor, and large scrollback buffers.
+Homepage: https://github.com/NurRobin/ccs
+Description: Claude Code Session manager
+ Manages Claude Code sessions inside dedicated tmux sessions with
+ descriptions, fuzzy attach, scheduled cron jobs, and sensible tmux
+ defaults. Sessions run on an isolated tmux socket.
