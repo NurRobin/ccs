@@ -2,39 +2,52 @@
 # ccs - Claude Code Session manager
 # Usage: ccs new [name] [desc]  |  ccs ls  |  ccs a [name]  |  ccs kill [name]
 
-CCS_VERSION="2.0.0"
+CCS_VERSION="2.1.0"
 
 set -euo pipefail
 
 # ── dependency check ───────────────────────────────────────────────────────────
 if ! command -v tmux &>/dev/null; then
-  echo "Error: 'tmux' is not installed. Install it with:"
-  echo "  sudo apt install tmux   # Debian/Ubuntu"
-  echo "  sudo pacman -S tmux     # Arch/CachyOS"
+  echo "Error: 'tmux' is not installed. Install it with:" >&2
+  echo "  sudo apt install tmux   # Debian/Ubuntu" >&2
+  echo "  sudo pacman -S tmux     # Arch/CachyOS" >&2
   exit 1
 fi
 
 # ── config ────────────────────────────────────────────────────────────────────
-META_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ccs"
-META_FILE="$META_DIR/sessions.meta"
-SCHED_FILE="$META_DIR/schedules.meta"
-LOCK_FILE="$META_DIR/.lock"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/ccs"
+META_FILE="$DATA_DIR/sessions.meta"
+SCHED_FILE="$DATA_DIR/schedules.meta"
+LOCK_FILE="$DATA_DIR/.lock"
 TMUX_SOCKET="ccs"
 
-# Migrate from older config dirs
-for old in "${XDG_CONFIG_HOME:-$HOME/.config}/claude-sessions" \
+# Migrate from older locations
+for old in "${XDG_CONFIG_HOME:-$HOME/.config}/ccs" \
+           "${XDG_CONFIG_HOME:-$HOME/.config}/claude-sessions" \
            "${XDG_CONFIG_HOME:-$HOME/.config}/claude-screen"; do
-  if [[ -d "$old" && ! -d "$META_DIR" ]]; then
-    mv "$old" "$META_DIR"; break
+  if [[ -d "$old" && ! -d "$DATA_DIR" ]]; then
+    mv "$old" "$DATA_DIR"; break
   fi
 done
 
-mkdir -p "$META_DIR"
+mkdir -p "$DATA_DIR"
 [[ -f "$META_FILE" ]] || touch "$META_FILE"
 [[ -f "$SCHED_FILE" ]] || touch "$SCHED_FILE"
 
-# Cleanup stale tmp files on exit
-trap 'rm -f "${META_FILE}.tmp" "${SCHED_FILE}.tmp"' EXIT
+trap 'rm -f "${META_FILE}.tmp" "${SCHED_FILE}.tmp" "$DATA_DIR/.crontab.tmp"' EXIT
+
+# ── output helpers ────────────────────────────────────────────────────────────
+
+# Disable colors when stdout is not a TTY (pipe, redirect)
+if [[ -t 1 ]]; then
+  _color() { printf "\033[%sm" "$1"; }
+else
+  _color() { printf ""; }
+fi
+BOLD=$(_color "1"); DIM=$(_color "2"); GREEN=$(_color "32")
+CYAN=$(_color "36"); YELLOW=$(_color "33"); RED=$(_color "31"); RESET=$(_color "0")
+
+_err() { echo "$@" >&2; }
 
 # ── tmux wrapper (dedicated socket) ──────────────────────────────────────────
 _tmux() { tmux -L "$TMUX_SOCKET" "$@"; }
@@ -55,46 +68,34 @@ _tmux_attach() {
   if _inside_ccs; then
     _tmux switch-client -t "$target"
   else
-    # Unset TMUX to allow attaching from inside a regular tmux session
     TMUX= _tmux attach-session -t "$target"
   fi
 }
 
-# ── helpers ────────────────────────────────────────────────────────────────────
-
-_color()  { printf "\033[%sm" "$1"; }
-BOLD=$(_color "1"); DIM=$(_color "2"); GREEN=$(_color "32")
-CYAN=$(_color "36"); YELLOW=$(_color "33"); RED=$(_color "31"); RESET=$(_color "0")
-
-_usage() {
-  cat <<EOF
-${BOLD}ccs${RESET} — Claude Code Session manager
-
-  ${CYAN}ccs new${RESET} [name] [description]  Start a new session
-  ${CYAN}ccs ls${RESET}                         List all sessions
-  ${CYAN}ccs a${RESET}  [name]                  Attach (fuzzy match)
-  ${CYAN}ccs kill${RESET} [name]                Kill a session
-  ${CYAN}ccs schedule add${RESET}               Schedule a recurring job
-  ${CYAN}ccs schedule ls${RESET}                Show scheduled jobs
-  ${CYAN}ccs schedule rm${RESET} <name>         Remove a scheduled job
-  ${CYAN}ccs log${RESET}                        Show cron execution log
-  ${CYAN}ccs help${RESET}                       Show this message
-  ${CYAN}ccs --version${RESET}                  Print version
-EOF
-}
+# ── validation ────────────────────────────────────────────────────────────────
 
 _validate_name() {
   local name="$1"
-  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-    echo "${RED}Invalid name '${name}' — only letters, digits, - and _ allowed.${RESET}"
+  if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+    _err "${RED}Invalid name '${name}' — must start with letter/digit, then letters, digits, - or _.${RESET}"
     return 1
   fi
+}
+
+_sanitize_desc() {
+  # Replace tab and pipe (meta delimiters) to prevent format breakage
+  local desc="$1"
+  desc="${desc//|/-}"
+  desc="${desc//$'\t'/ }"
+  printf '%s' "$desc"
 }
 
 # ── meta file operations (awk-based, flock-protected) ────────────────────────
 
 _save_meta() {
-  local name="$1" desc="$2" dir="$3"
+  local name="$1" desc dir
+  desc=$(_sanitize_desc "$2")
+  dir="$3"
   {
     flock -x 9
     awk -F'|' -v n="$name" '$1 != n' "$META_FILE" > "${META_FILE}.tmp" 2>/dev/null || true
@@ -113,6 +114,20 @@ _del_meta() {
   {
     flock -x 9
     awk -F'|' -v n="$name" '$1 != n' "$META_FILE" > "${META_FILE}.tmp" 2>/dev/null || true
+    mv "${META_FILE}.tmp" "$META_FILE"
+  } 9>"$LOCK_FILE"
+}
+
+_gc_meta() {
+  # Remove meta entries for sessions that no longer exist in tmux
+  local live
+  live=$(_session_names)
+  {
+    flock -x 9
+    awk -F'|' -v live="$live" '
+      BEGIN { n = split(live, a, "\n"); for (i=1; i<=n; i++) s[a[i]] = 1 }
+      $1 in s { print }
+    ' "$META_FILE" > "${META_FILE}.tmp" 2>/dev/null || true
     mv "${META_FILE}.tmp" "$META_FILE"
   } 9>"$LOCK_FILE"
 }
@@ -136,15 +151,17 @@ _del_schedule() {
   } 9>"$LOCK_FILE"
 }
 
+_schedule_exists() {
+  awk -F'|' -v n="$1" '$1 == n { found=1; exit } END { exit !found }' "$SCHED_FILE" 2>/dev/null
+}
+
 # ── session helpers ──────────────────────────────────────────────────────────
 
 _session_exists() { _tmux has-session -t "=$1" 2>/dev/null; }
 _session_names() { _tmux list-sessions -F '#{session_name}' 2>/dev/null || true; }
 
 _session_count() {
-  local n
-  n=$(_tmux list-sessions 2>/dev/null | wc -l)
-  echo "${n:-0}"
+  _tmux list-sessions 2>/dev/null | wc -l | tr -d ' '
 }
 
 _resolve_name() {
@@ -153,11 +170,9 @@ _resolve_name() {
   names=$(_session_names)
   [[ -z "$names" ]] && { echo ""; return; }
 
-  # exact match
   if echo "$names" | grep -qxF "$input"; then
     echo "$input"; return
   fi
-  # partial (case-insensitive)
   echo "$names" | grep -i "$input" | head -1 || true
 }
 
@@ -167,7 +182,7 @@ _read_hm() {
   # Sets caller's m and h variables directly
   local t
   while true; do
-    printf "${CYAN}Time${RESET} (HH:MM): "
+    printf "${CYAN}Time${RESET} (HH:MM): " >&2
     read -r t
     t="${t// /}"
     if [[ "$t" =~ ^([0-9]{1,2})$ ]]; then
@@ -182,8 +197,28 @@ _read_hm() {
         m=$mm; h=$hh; return
       fi
     fi
-    printf "${RED}Invalid — use HH:MM (e.g. 04:30) or just the hour (e.g. 4).${RESET}\n"
+    _err "${RED}Invalid — use HH:MM (e.g. 04:30) or just the hour (e.g. 4).${RESET}"
   done
+}
+
+# ── usage ─────────────────────────────────────────────────────────────────────
+
+_usage() {
+  cat <<EOF
+${BOLD}ccs${RESET} — Claude Code Session manager
+
+  ${CYAN}ccs new${RESET} [name] [description]  Start a new session
+  ${CYAN}ccs ls${RESET}                         List all sessions
+  ${CYAN}ccs a${RESET}  [name]                  Attach (fuzzy match)
+  ${CYAN}ccs kill${RESET} [name]                Kill a session
+  ${CYAN}ccs gc${RESET}                         Clean up orphaned metadata
+  ${CYAN}ccs schedule add${RESET}               Schedule a recurring job
+  ${CYAN}ccs schedule ls${RESET}                Show scheduled jobs
+  ${CYAN}ccs schedule rm${RESET} <name>         Remove a scheduled job
+  ${CYAN}ccs log${RESET}                        Show cron execution log
+  ${CYAN}ccs help${RESET}                       Show this message
+  ${CYAN}ccs --version${RESET}                  Print version
+EOF
 }
 
 # ── subcommands ────────────────────────────────────────────────────────────────
@@ -197,7 +232,7 @@ cmd_new() {
   _validate_name "$name" || return 1
 
   if [[ -z "$desc" ]]; then
-    printf "${YELLOW}Description${RESET} (optional, Enter to skip): "
+    printf "${YELLOW}Description${RESET} (optional, Enter to skip): " >&2
     read -r desc
   fi
 
@@ -207,12 +242,12 @@ cmd_new() {
       ((i++))
     done
     name="${name}${i}"
-    echo "${DIM}Session name taken → using '${name}'${RESET}"
+    _err "${DIM}Session name taken → using '${name}'${RESET}"
   fi
 
   _save_meta "$name" "${desc:-No description}" "$PWD"
 
-  echo "${GREEN}▶ Starting session '${name}'${RESET}"
+  _err "${GREEN}▶ Starting session '${name}'${RESET}"
   _tmux new-session -d -s "$name" -c "$PWD"
   _apply_defaults
   _tmux send-keys -t "$name" "claude" Enter
@@ -220,6 +255,9 @@ cmd_new() {
 }
 
 cmd_ls() {
+  # Reconcile: remove meta entries for dead sessions
+  _gc_meta
+
   local sessions
   sessions=$(_tmux list-sessions -F '#{session_name}:#{session_attached}' 2>/dev/null || true)
 
@@ -278,7 +316,7 @@ cmd_attach() {
       return
     fi
     cmd_ls
-    printf "${YELLOW}Session name: ${RESET}"
+    printf "${YELLOW}Session name: ${RESET}" >&2
     read -r input
   fi
 
@@ -286,11 +324,11 @@ cmd_attach() {
   resolved=$(_resolve_name "$input")
 
   if [[ -z "$resolved" ]]; then
-    echo "${RED}No session matching '${input}' found.${RESET}"
+    _err "${RED}No session matching '${input}' found.${RESET}"
     return 1
   fi
 
-  echo "${GREEN}↩ Attaching to '${resolved}'${RESET}"
+  _err "${GREEN}↩ Attaching to '${resolved}'${RESET}"
   _tmux_attach "$resolved"
 }
 
@@ -299,7 +337,7 @@ cmd_kill() {
 
   if [[ -z "$input" ]]; then
     cmd_ls
-    printf "${YELLOW}Session to kill: ${RESET}"
+    printf "${YELLOW}Session to kill: ${RESET}" >&2
     read -r input
   fi
 
@@ -307,19 +345,24 @@ cmd_kill() {
   resolved=$(_resolve_name "$input")
 
   if [[ -z "$resolved" ]]; then
-    echo "${RED}No session matching '${input}' found.${RESET}"
+    _err "${RED}No session matching '${input}' found.${RESET}"
     return 1
   fi
 
-  printf "${RED}Kill '${resolved}'? [y/N] ${RESET}"
+  printf "${RED}Kill '${resolved}'? [y/N] ${RESET}" >&2
   read -r confirm
   if [[ "$confirm" =~ ^[Yy]$ ]]; then
     _tmux kill-session -t "$resolved"
     _del_meta "$resolved"
-    echo "${DIM}Session '${resolved}' killed.${RESET}"
+    _err "${DIM}Session '${resolved}' killed.${RESET}"
   else
-    echo "Aborted."
+    _err "Aborted."
   fi
+}
+
+cmd_gc() {
+  _gc_meta
+  _err "${DIM}Cleaned up orphaned metadata.${RESET}"
 }
 
 # ── cron runner ──────────────────────────────────────────────────────────────
@@ -335,7 +378,7 @@ cmd_cron_run() {
     esac
   done
 
-  local logfile="$META_DIR/cron.log"
+  local logfile="$DATA_DIR/cron.log"
   local ts; ts="$(date '+%Y-%m-%d %H:%M')"
 
   if [[ "$skip" == "yes" ]] && _session_exists "$name"; then
@@ -343,7 +386,6 @@ cmd_cron_run() {
     exit 0
   fi
 
-  # Resolve prompt
   local prompt=""
   if [[ "$prompt_src" == file:* ]]; then
     local fpath="${prompt_src#file:}"
@@ -367,7 +409,7 @@ cmd_cron_run() {
   fi
 
   if [[ "$mode" == "headless" ]]; then
-    local outfile="$META_DIR/${name}-$(date +%Y%m%d-%H%M).log"
+    local outfile="$DATA_DIR/${name}-$(date +%Y%m%d-%H%M).log"
     echo "[$ts] [START] headless '${final_name}' in ${workdir:-~} → $outfile" >> "$logfile"
     local run_dir="${workdir:-.}"
     nohup bash -c "cd $(printf '%q' "$run_dir") && claude -p $(printf '%q' "$prompt") > $(printf '%q' "$outfile") 2>&1" &
@@ -382,7 +424,6 @@ cmd_cron_run() {
     _apply_defaults
     _tmux send-keys -t "$final_name" "claude" Enter
 
-    # Poll for Claude readiness
     local max_wait=60 waited=0
     while (( waited < max_wait )); do
       sleep 2
@@ -420,118 +461,120 @@ cmd_schedule() {
 
   case "$subcmd" in
     add)
-      echo ""
-      echo "${BOLD}New scheduled job${RESET}"
-      echo ""
+      echo "" >&2
+      _err "${BOLD}New scheduled job${RESET}"
+      echo "" >&2
 
-      printf "${CYAN}Job name${RESET} (e.g. daily-review): "
+      printf "${CYAN}Job name${RESET} (e.g. daily-review): " >&2
       local name; read -r name
       _validate_name "$name" || return 1
 
-      # Prompt source
-      echo ""
-      echo "  ${CYAN}1${RESET}  Slash command  (e.g. /entslopment, /pr-review)"
-      echo "  ${CYAN}2${RESET}  Prompt file    (.md / .txt)"
-      echo "  ${CYAN}3${RESET}  Inline text"
-      printf "${CYAN}Prompt source${RESET} [1-3]: "
+      echo "" >&2
+      echo "  ${CYAN}1${RESET}  Slash command  (e.g. /entslopment, /pr-review)" >&2
+      echo "  ${CYAN}2${RESET}  Prompt file    (.md / .txt)" >&2
+      echo "  ${CYAN}3${RESET}  Inline text" >&2
+      printf "${CYAN}Prompt source${RESET} [1-3]: " >&2
       local psrc_ans; read -r psrc_ans
       local prompt_src="" prompt_display=""
 
       case "$psrc_ans" in
         1)
-          printf "${CYAN}Slash command${RESET}: "; local slash; read -r slash
+          printf "${CYAN}Slash command${RESET}: " >&2; local slash; read -r slash
           [[ "${slash:0:1}" != "/" ]] && slash="/$slash"
           prompt_src="slash:${slash}"; prompt_display="$slash" ;;
         2)
-          printf "${CYAN}File path${RESET}: "; local pf; read -r pf
+          printf "${CYAN}File path${RESET}: " >&2; local pf; read -r pf
           pf="${pf/#\~/$HOME}"
-          [[ ! -f "$pf" ]] && { echo "${RED}File not found.${RESET}"; return 1; }
+          [[ ! -f "$pf" ]] && { _err "${RED}File not found.${RESET}"; return 1; }
           pf="$(realpath "$pf")"
           prompt_src="file:${pf}"; prompt_display="$(basename "$pf")" ;;
         3)
-          printf "${CYAN}Prompt${RESET}: "; local pt; read -r pt
+          printf "${CYAN}Prompt${RESET}: " >&2; local pt; read -r pt
           prompt_src="$pt"; prompt_display="${pt:0:50}" ;;
-        *) echo "${RED}Invalid.${RESET}"; return 1 ;;
+        *) _err "${RED}Invalid.${RESET}"; return 1 ;;
       esac
 
-      # Frequency
-      echo ""
-      echo "  ${CYAN}1${RESET}  Daily"
-      echo "  ${CYAN}2${RESET}  Weekly"
-      echo "  ${CYAN}3${RESET}  Weekdays (Mon–Fri)"
-      echo "  ${CYAN}4${RESET}  Custom cron expression"
-      printf "${CYAN}Frequency${RESET} [1-4]: "
+      echo "" >&2
+      echo "  ${CYAN}1${RESET}  Daily" >&2
+      echo "  ${CYAN}2${RESET}  Weekly" >&2
+      echo "  ${CYAN}3${RESET}  Weekdays (Mon–Fri)" >&2
+      echo "  ${CYAN}4${RESET}  Custom cron expression" >&2
+      printf "${CYAN}Frequency${RESET} [1-4]: " >&2
       local freq; read -r freq
       local cron="" h="" m=""
 
       case "$freq" in
         1) _read_hm; cron="$m $h * * *" ;;
         2)
-          echo "  0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat"
-          printf "${CYAN}Day${RESET} [0-6]: "; local day; read -r day
+          echo "  0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat" >&2
+          printf "${CYAN}Day${RESET} [0-6]: " >&2; local day; read -r day
           _read_hm; cron="$m $h * * $day" ;;
         3) _read_hm; cron="$m $h * * 1-5" ;;
-        4) printf "${CYAN}Cron expression${RESET}: "; read -r cron ;;
-        *) echo "${RED}Invalid.${RESET}"; return 1 ;;
+        4) printf "${CYAN}Cron expression${RESET}: " >&2; read -r cron ;;
+        *) _err "${RED}Invalid.${RESET}"; return 1 ;;
       esac
 
-      # Working directory
-      echo ""
-      printf "${CYAN}Working directory${RESET} [${PWD}]: "
+      echo "" >&2
+      printf "${CYAN}Working directory${RESET} [${PWD}]: " >&2
       local workdir; read -r workdir
       workdir="${workdir/#\~/$HOME}"
       [[ -z "$workdir" ]] && workdir="$PWD"
       workdir="$(realpath "$workdir" 2>/dev/null || echo "$workdir")"
       if [[ ! -d "$workdir" ]]; then
-        echo "${RED}Directory not found: ${workdir}${RESET}"; return 1
+        _err "${RED}Directory not found: ${workdir}${RESET}"; return 1
       fi
 
-      # Skip if running
-      echo ""
-      printf "${CYAN}Skip if '${name}' is still running?${RESET} [Y/n]: "
+      echo "" >&2
+      printf "${CYAN}Skip if '${name}' is still running?${RESET} [Y/n]: " >&2
       local skip_ans; read -r skip_ans
       local skip=""
       [[ ! "$skip_ans" =~ ^[Nn]$ ]] && skip="--skip-if-running"
 
-      # Confirm
-      echo ""
-      echo "  ${BOLD}Name:${RESET}    $name"
-      echo "  ${BOLD}Prompt:${RESET}  $prompt_display"
-      echo "  ${BOLD}Cron:${RESET}    $cron"
-      echo "  ${BOLD}Dir:${RESET}     $workdir"
-      echo "  ${BOLD}Skip:${RESET}    ${skip:+yes}${skip:-no}"
-      echo ""
-      printf "${YELLOW}Schedule this job?${RESET} [Y/n]: "
+      echo "" >&2
+      echo "  ${BOLD}Name:${RESET}    $name" >&2
+      echo "  ${BOLD}Prompt:${RESET}  $prompt_display" >&2
+      echo "  ${BOLD}Cron:${RESET}    $cron" >&2
+      echo "  ${BOLD}Dir:${RESET}     $workdir" >&2
+      echo "  ${BOLD}Skip:${RESET}    ${skip:+yes}${skip:-no}" >&2
+      echo "" >&2
+      printf "${YELLOW}Schedule this job?${RESET} [Y/n]: " >&2
       local confirm; read -r confirm
-      [[ "$confirm" =~ ^[Nn]$ ]] && { echo "Aborted."; return 0; }
+      [[ "$confirm" =~ ^[Nn]$ ]] && { _err "Aborted."; return 0; }
 
       local ccs_path; ccs_path="$(realpath "$0")"
       local marker="# ccs-schedule:${name}"
-      local tmp; tmp=$(mktemp)
+      local tmp="$DATA_DIR/.crontab.tmp"
       crontab -l 2>/dev/null | grep -Fv "$marker" > "$tmp" || true
       local psrc_q; psrc_q="$(printf '%q' "$prompt_src")"
       local wd_q; wd_q="$(printf '%q' "$workdir")"
       local sane_path="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin"
       echo "${cron} env PATH=${sane_path} ${ccs_path} _cron ${name} interactive ${psrc_q} ${skip} --workdir=${wd_q} ${marker}" >> "$tmp"
-      crontab "$tmp"; rm "$tmp"
+      crontab "$tmp"; rm -f "$tmp"
 
       _save_schedule "$name" "$cron" "$prompt_display" "$skip" "$workdir"
-      echo "${GREEN}✓ '${name}' scheduled.${RESET}"
+      _err "${GREEN}✓ '${name}' scheduled.${RESET}"
       ;;
 
     rm)
       local name="${1:-}"
-      [[ -z "$name" ]] && { echo "${RED}Usage: ccs schedule rm <name>${RESET}"; return 1; }
-      local tmp; tmp=$(mktemp)
+      [[ -z "$name" ]] && { _err "${RED}Usage: ccs schedule rm <name>${RESET}"; return 1; }
+
+      if ! _schedule_exists "$name"; then
+        _err "${RED}No schedule named '${name}' found.${RESET}"
+        return 1
+      fi
+
+      local tmp="$DATA_DIR/.crontab.tmp"
       crontab -l 2>/dev/null | grep -Fv "# ccs-schedule:${name}" > "$tmp" || true
-      crontab "$tmp"; rm "$tmp"
+      crontab "$tmp"; rm -f "$tmp"
       _del_schedule "$name"
-      echo "${DIM}Schedule '${name}' removed.${RESET}"
+      _err "${DIM}Schedule '${name}' removed.${RESET}"
       ;;
 
     ls)
       if [[ ! -s "$SCHED_FILE" ]]; then
-        echo "${DIM}No scheduled jobs.${RESET}"; return
+        echo "${DIM}No scheduled jobs.${RESET}"
+        return
       fi
       printf "\n${BOLD}%-20s %-15s %-5s %-20s %s${RESET}\n" "NAME" "CRON" "SKIP" "PROMPT" "DIR"
       printf "%s\n" "────────────────────────────────────────────────────────────────────────────────"
@@ -545,11 +588,11 @@ cmd_schedule() {
         printf "%-20s %-15s %-5b %-20s %s%b\n" "$sname" "$scron" "$sf" "$sprompt" "$display_dir" "$running"
       done < "$SCHED_FILE"
       echo ""
-      echo "${DIM}Log: ${META_DIR}/cron.log — run 'ccs log' to view${RESET}"
+      echo "${DIM}Log: ${DATA_DIR}/cron.log — run 'ccs log' to view${RESET}"
       ;;
 
     log)
-      local logfile="$META_DIR/cron.log"
+      local logfile="$DATA_DIR/cron.log"
       if [[ ! -f "$logfile" ]]; then
         echo "${DIM}No log yet.${RESET}"; return
       fi
@@ -564,7 +607,7 @@ cmd_schedule() {
       ;;
 
     *)
-      echo "${RED}Unknown: ${subcmd}${RESET}" ;;
+      _err "${RED}Unknown: ${subcmd}${RESET}" ;;
   esac
 }
 
@@ -575,6 +618,7 @@ case "${1:-_bare}" in
   ls|list)  cmd_ls ;;
   a|attach) shift; cmd_attach "$@" ;;
   kill)     shift; cmd_kill "$@" ;;
+  gc)       cmd_gc ;;
   schedule) shift; cmd_schedule "$@" ;;
   _cron)    shift; cmd_cron_run "$@" ;;
   log)      shift; cmd_schedule log "$@" ;;

@@ -1,4 +1,4 @@
-.TH CCS 1 "March 2026" "ccs 2.0.0" "User Commands"
+.TH CCS 1 "March 2026" "ccs 2.1.0" "User Commands"
 .SH NAME
 ccs \- Claude Code Session manager
 .SH SYNOPSIS
@@ -14,14 +14,18 @@ Sessions run on a dedicated tmux socket
 .RB ( ccs ),
 isolated from regular tmux usage. Mouse scrolling, truecolor, and
 50k-line scrollback are configured automatically.
+.PP
+ANSI colors are disabled when stdout is not a terminal.
 .SH COMMANDS
 .TP
 .BR new " [" name "] [" description ]
 Start a new Claude Code session. Name defaults to the current
-directory basename. Names must match [a\-zA\-Z0\-9_\-].
+directory basename. Names must start with a letter or digit,
+followed by letters, digits, hyphens, or underscores.
 .TP
 .B ls
 List all active sessions grouped by working directory.
+Automatically cleans up orphaned metadata entries.
 .TP
 .BR a ", " attach " [" name ]
 Attach to a session. Supports partial, case\-insensitive matching.
@@ -29,6 +33,10 @@ If only one session exists, attaches directly.
 .TP
 .BR kill " " name
 Kill a session (with confirmation).
+.TP
+.B gc
+Clean up orphaned session metadata (entries for sessions
+that no longer exist in tmux).
 .TP
 .B schedule add
 Interactive wizard to create a scheduled cron job.
@@ -40,6 +48,7 @@ List all scheduled jobs with status.
 .TP
 .BR "schedule rm" " " name
 Remove a scheduled job and its crontab entry.
+Fails if the named schedule does not exist.
 .TP
 .B log
 Show cron execution history (last 40 entries).
@@ -54,18 +63,18 @@ no sessions shows help, one session attaches directly,
 multiple sessions lists them.
 .SH FILES
 .TP
-.I ~/.config/ccs/sessions.meta
+.I ~/.local/share/ccs/sessions.meta
 Session metadata (name, description, directory).
 .TP
-.I ~/.config/ccs/schedules.meta
+.I ~/.local/share/ccs/schedules.meta
 Scheduled job definitions.
 .TP
-.I ~/.config/ccs/cron.log
+.I ~/.local/share/ccs/cron.log
 Cron execution log.
 .SH ENVIRONMENT
 .TP
-.B XDG_CONFIG_HOME
-Base directory for configuration (default: ~/.config).
+.B XDG_DATA_HOME
+Base directory for application data (default: ~/.local/share).
 .SH DEPENDENCIES
 .BR tmux (1),
 .BR bash (1),
