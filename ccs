@@ -5,6 +5,7 @@
 CCS_VERSION="2.2.0"
 
 set -euo pipefail
+export LC_ALL=C
 
 # Exit codes
 EX_OK=0
