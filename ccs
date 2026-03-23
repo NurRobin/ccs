@@ -2,7 +2,7 @@
 # ccs - Claude Code Session manager
 # Usage: ccs new [name] [desc]  |  ccs ls  |  ccs a [name]  |  ccs kill [name]
 
-CCS_VERSION="2.2.0"
+CCS_VERSION="2.2.1"
 
 set -euo pipefail
 export LC_ALL=C
@@ -181,7 +181,7 @@ _session_exists() { _tmux has-session -t "=$1" 2>/dev/null; }
 _session_names() { _tmux list-sessions -F '#{session_name}' 2>/dev/null || true; }
 
 _session_count() {
-  _tmux list-sessions 2>/dev/null | wc -l | tr -d ' '
+  { _tmux list-sessions 2>/dev/null || true; } | wc -l | tr -d ' '
 }
 
 _resolve_name() {
