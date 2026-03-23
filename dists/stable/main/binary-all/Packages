@@ -1,14 +1,14 @@
 Package: ccs
-Version: 2.2.0
+Version: 2.2.1
 Architecture: all
 Maintainer: Robin <robin@nurrobin.de>
 Depends: bash (>= 4.0), tmux (>= 3.0), cron
 Recommends: claude-code, bash-completion
-Filename: pool/main/c/ccs/ccs_2.2.0_all.deb
-Size: 9258
-MD5sum: 04601fc000f9383c3febab0f58fdc7b7
-SHA1: 00b95ed47a90c3a5b6b9124e51b6bc82ef2d1199
-SHA256: 3f203eb9c175f9683f37c8e291c69b6ce4b3689841484ccb4d6768b565cc2873
+Filename: pool/main/c/ccs/ccs_2.2.1_all.deb
+Size: 9182
+MD5sum: 18580bae8374873669beb15ad770a1fe
+SHA1: f875e0b50e6891814f16c0ef53db3f3d58722624
+SHA256: e16edfdffa5e2fd80b8bf7d68549a3594c54ba5ad2554451aa2af9d2d4abe0b0
 Section: utils
 Priority: optional
 Homepage: https://github.com/NurRobin/ccs
