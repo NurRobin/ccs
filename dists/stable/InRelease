@@ -1,0 +1,42 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: all
+Codename: stable
+Components: main
+Date: Mon, 23 Mar 2026 09:17:49 +0000
+Label: cc
+Origin: cc
+Suite: stable
+MD5Sum:
+ 115aaf96143ba5bedd043f0b12b35b45              126 Release
+ d41d8cd98f00b204e9800998ecf8427e                0 main/binary-all/Packages
+ 3fdbf88d3ebaea348eeefc198c0a9bdd               29 main/binary-all/Packages.gz
+SHA1:
+ 5ed19fc25ff8c964137fe46ce7a70721f040d6f9              126 Release
+ da39a3ee5e6b4b0d3255bfef95601890afd80709                0 main/binary-all/Packages
+ 2cb3231da45491ce54856b33ab28dbc845cefec7               29 main/binary-all/Packages.gz
+SHA256:
+ d3f733c223f5f0031bee997118f8f270716d706e51616ede96196cbc0d9a41ae              126 Release
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855                0 main/binary-all/Packages
+ e916b932030cba8a47f9933a04f775f1243404eaa2e695c4b9251c6ecf7c8121               29 main/binary-all/Packages.gz
+SHA512:
+ cda5e55a2b691dc121f0370cd3d9e02f2f6013743b3828dc4870cb68444f08c185b95f7dac4bd87c9e517149a1c5fe07954b851738ae24f7c4fdd81dc2e47498              126 Release
+ cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e                0 main/binary-all/Packages
+ ffcfee02650a2e428ec7dd1c0548badc63c994c9eb0b32d33698d01c10122c399e899dc755f99fa3b15a5929964141897f2b503e6cc299ddc011e29973d00d3b               29 main/binary-all/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEE8t7NghK91k6LlQADi1Q/NjTz3yIFAmnBBT0ACgkQi1Q/NjTz
+3yIabg//ZsRwJFwEVhhhMgnqqd/w3+5K2TMHgoamInkd+IHjAM0tgg/Pht+m+2X0
+rP5QqH3dntNfHZmTj4TFAQ/o83pJh0+RyWyezDimScr0J73eFPmApNiNtcQBc2K9
+elp74cimZQi09BVghjLjhInn76OBYMeF7EUp3gb+BUvyCHcy8LFBwn2mgUm4NCa+
+huIycz0mXeyZk0V5ZGsylCB5vD7V5KGfLUTyjS1ZnXdjslRPo35LRUlSiDZZU0E1
+ElEvsmYpGn/qNbRCb3cEOrOjrv/X7vnaK1rLIPZPL+V5xvwRnGv2DlocvBVDKNQl
+4lMkF7yqR+SColZdqMOeEnlPypuJP48OnOs1/+Xp+hc5QZZW7MhFshM9w1nXejjP
+9RlxQXdIvCsk8sPjK6Y2FZ2c4Ud1uzAIofR/mDc1uWI53Oy7QwT8zExjyw2lRAm+
+6UzrivhBa9UAbvT3/ft/MsJNifUZmiVUBZGMT+s26Yhz+zEntr9cXqgCdeYvdQR3
+ygIdvKySY6scJRUb3mhOhroteHIwx+p0XM3U3GkMDkYNWR0Ctoh15BSAk+rxW51W
+aVdFgks8cNErHOKSZ01xMEOqm78HivY0WBeLGKL9dqvkbR2TRHOzpp6uo9HlOl2a
+8A8uPg82BmtTt2MHEZFeqKGgcXmxh+h3s+m5lhqmttudKk/IQyg=
+=OOvi
+-----END PGP SIGNATURE-----
