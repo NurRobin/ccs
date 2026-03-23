@@ -1,23 +1,20 @@
 <!DOCTYPE html>
-<html><head><title>cc — Claude Code session manager</title>
+<html><head><title>ccs - Claude Code Session manager</title>
 <style>body{font-family:system-ui;max-width:700px;margin:4em auto;padding:0 1em;color:#e0e0e0;background:#1a1a2e}
 pre{background:#16213e;padding:1em;border-radius:6px;overflow-x:auto}code{color:#00d4aa}
 a{color:#4ea8de}h1{color:#fff}</style></head>
-<body><h1>cc</h1><p>Claude Code tmux session manager.</p>
-<h2>Install</h2><pre><code># Import signing key
-curl -fsSL https://NurRobin.github.io/cc/pubkey.gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/cc.gpg
+<body><h1>ccs</h1><p>Claude Code Session manager.</p>
+<h2>Install</h2><pre><code>curl -fsSL https://NurRobin.github.io/ccs/pubkey.gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/ccs.gpg
 
-# Add repository
-echo "deb [arch=all signed-by=/etc/apt/keyrings/cc.gpg] https://NurRobin.github.io/cc stable main" \
-  | sudo tee /etc/apt/sources.list.d/cc.list
+echo "deb [arch=all signed-by=/etc/apt/keyrings/ccs.gpg] https://NurRobin.github.io/ccs stable main" \
+  | sudo tee /etc/apt/sources.list.d/ccs.list
 
-# Install
-sudo apt update && sudo apt install cc</code></pre>
-<h2>Usage</h2><pre><code>cc new [name]        Start a Claude Code session
-cc ls                List sessions
-cc a [name]          Attach (fuzzy match)
-cc kill [name]       Kill a session
-cc schedule add      Schedule a recurring job
-cc log               View cron execution log</code></pre>
-<p><a href="https://github.com/NurRobin/cc">GitHub</a></p></body></html>
+sudo apt update && sudo apt install ccs</code></pre>
+<h2>Usage</h2><pre><code>ccs new [name]        Start a Claude Code session
+ccs ls                List sessions
+ccs a [name]          Attach (fuzzy match)
+ccs kill [name]       Kill a session
+ccs schedule add      Schedule a recurring job
+ccs log               View cron execution log</code></pre>
+<p><a href="https://github.com/NurRobin/ccs">GitHub</a></p></body></html>

@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: Robin <robin@nurrobin.de>
 Depends: bash (>= 4.0), tmux (>= 3.0), cron
 Recommends: claude-code
-Filename: pool/main/c/cc/cc_1.0.0_all.deb
+Filename: pool/main/c/ccs/cc_1.0.0_all.deb
 Size: 6090
 MD5sum: 7147af99bd70476649840e576459144f
 SHA1: e6e6303522b0475d24edc4cdeb31bf2f1f3dc867
@@ -16,4 +16,23 @@ Description: Claude Code tmux session manager
  Manages Claude Code sessions inside tmux with descriptions,
  fuzzy attach, scheduled cron jobs, and built-in tmux defaults
  for mouse scrolling, truecolor, and large scrollback buffers.
+
+Package: ccs
+Version: 2.0.0
+Architecture: all
+Maintainer: Robin <robin@nurrobin.de>
+Depends: bash (>= 4.0), tmux (>= 3.0), cron
+Recommends: claude-code
+Filename: pool/main/c/ccs/ccs_2.0.0_all.deb
+Size: 7342
+MD5sum: b126d01dbc85aff5b536df54b7387c40
+SHA1: 5b5f7536d6380926f41718c053769ad5fc930b97
+SHA256: f9615bd7bfbee0603f3777e5fd1b5d53b666473095241e0c20aa8dec961d2532
+Section: utils
+Priority: optional
+Homepage: https://github.com/NurRobin/ccs
+Description: Claude Code Session manager
+ Manages Claude Code sessions inside dedicated tmux sessions with
+ descriptions, fuzzy attach, scheduled cron jobs, and sensible tmux
+ defaults. Sessions run on an isolated tmux socket.
 
