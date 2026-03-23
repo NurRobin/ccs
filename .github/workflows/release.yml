@@ -1,0 +1,157 @@
+name: Release & APT Repo
+
+on:
+  push:
+    branches: [main]
+    paths: [cc]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      created: ${{ steps.check.outputs.created }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep -oP 'CC_VERSION="\K[^"]+' cc)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release exists
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" &>/dev/null; then
+            echo "Release v${{ steps.version.outputs.version }} already exists"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build .deb
+        if: steps.check.outputs.created == 'true'
+        run: bash build-deb.sh
+
+      - name: Create release
+        if: steps.check.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            dist/cc_${VERSION}_all.deb
+
+  update-apt-repo:
+    needs: release
+    if: needs.release.outputs.created == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: repo
+        continue-on-error: true
+
+      - name: Init gh-pages if needed
+        run: |
+          if [ ! -d repo/.git ]; then
+            mkdir -p repo
+            cd repo
+            git init
+            git checkout -b gh-pages
+          fi
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          GPG_KEY_ID=$(gpg --list-keys --with-colons | awk -F: '/^pub/{found=1} found && /^fpr/{print $10; exit}')
+          echo "GPG_KEY_ID=$GPG_KEY_ID" >> "$GITHUB_ENV"
+
+      - name: Download all release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p repo/pool/main/c/cc
+          # Clean old debs, re-download all
+          rm -f repo/pool/main/c/cc/*.deb
+          for tag in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" --pattern '*.deb' --dir repo/pool/main/c/cc/ || true
+          done
+
+      - name: Generate APT repo metadata
+        run: |
+          cd repo
+          mkdir -p dists/stable/main/binary-all
+
+          dpkg-scanpackages --arch all pool/ > dists/stable/main/binary-all/Packages
+          gzip -k -f dists/stable/main/binary-all/Packages
+
+          cd dists/stable
+          apt-ftparchive release \
+            -o APT::FTPArchive::Release::Origin="cc" \
+            -o APT::FTPArchive::Release::Label="cc" \
+            -o APT::FTPArchive::Release::Suite="stable" \
+            -o APT::FTPArchive::Release::Codename="stable" \
+            -o APT::FTPArchive::Release::Architectures="all" \
+            -o APT::FTPArchive::Release::Components="main" \
+            . > Release
+
+      - name: Sign release
+        run: |
+          cd repo/dists/stable
+          gpg --batch --yes --armor --detach-sign -o Release.gpg Release
+          gpg --batch --yes --armor --clearsign -o InRelease Release
+
+      - name: Export public key
+        run: gpg --armor --export "$GPG_KEY_ID" > repo/pubkey.gpg
+
+      - name: Create install page
+        run: |
+          cat > repo/index.html << 'HTML'
+          <!DOCTYPE html>
+          <html><head><title>cc — Claude Code session manager</title>
+          <style>body{font-family:system-ui;max-width:700px;margin:4em auto;padding:0 1em;color:#e0e0e0;background:#1a1a2e}
+          pre{background:#16213e;padding:1em;border-radius:6px;overflow-x:auto}code{color:#00d4aa}
+          a{color:#4ea8de}h1{color:#fff}</style></head>
+          <body><h1>cc</h1><p>Claude Code tmux session manager.</p>
+          <h2>Install</h2><pre><code># Import signing key
+          curl -fsSL https://NurRobin.github.io/cc/pubkey.gpg \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/cc.gpg
+
+          # Add repository
+          echo "deb [arch=all signed-by=/etc/apt/keyrings/cc.gpg] https://NurRobin.github.io/cc stable main" \
+            | sudo tee /etc/apt/sources.list.d/cc.list
+
+          # Install
+          sudo apt update && sudo apt install cc</code></pre>
+          <h2>Usage</h2><pre><code>cc new [name]        Start a Claude Code session
+          cc ls                List sessions
+          cc a [name]          Attach (fuzzy match)
+          cc kill [name]       Kill a session
+          cc schedule add      Schedule a recurring job
+          cc log               View cron execution log</code></pre>
+          <p><a href="https://github.com/NurRobin/cc">GitHub</a></p></body></html>
+          HTML
+
+      - name: Push gh-pages
+        run: |
+          cd repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update APT repo — v${{ needs.release.outputs.version }}"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
