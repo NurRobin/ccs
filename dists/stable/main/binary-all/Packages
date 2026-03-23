@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: Robin <robin@nurrobin.de>
 Depends: bash (>= 4.0), tmux (>= 3.0), cron
 Recommends: claude-code
-Filename: pool/main/c/ccs/cc_1.0.0_all.deb
+Filename: pool/main/c/cc/cc_1.0.0_all.deb
 Size: 6090
 MD5sum: 7147af99bd70476649840e576459144f
 SHA1: e6e6303522b0475d24edc4cdeb31bf2f1f3dc867
