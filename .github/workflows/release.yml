@@ -85,11 +85,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p repo/pool/main/c/cc
-          # Clean old debs, re-download all
           rm -f repo/pool/main/c/cc/*.deb
-          for tag in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
-            gh release download "$tag" --pattern '*.deb' --dir repo/pool/main/c/cc/ || true
+          REPO="${{ github.repository }}"
+          for tag in $(gh release list --repo "$REPO" --limit 100 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" --repo "$REPO" --pattern '*.deb' --dir repo/pool/main/c/cc/ || true
           done
+          ls -la repo/pool/main/c/cc/
 
       - name: Generate APT repo metadata
         run: |
