@@ -1,19 +1,20 @@
 Package: ccs
-Version: 2.1.0
+Version: 2.2.0
 Architecture: all
 Maintainer: Robin <robin@nurrobin.de>
 Depends: bash (>= 4.0), tmux (>= 3.0), cron
-Recommends: claude-code
-Filename: pool/main/c/ccs/ccs_2.1.0_all.deb
-Size: 7838
-MD5sum: a038058b5c3a01cc4c9f5028bf9d1875
-SHA1: 1a4f8928a4b2282bb2f2eb3e4a22f3fa7579de46
-SHA256: 6153cfa5b43eea0d90c9a7681c2c56e436ac4f046ce40d2a4c9d44d0f6fcb021
+Recommends: claude-code, bash-completion
+Filename: pool/main/c/ccs/ccs_2.2.0_all.deb
+Size: 9258
+MD5sum: 04601fc000f9383c3febab0f58fdc7b7
+SHA1: 00b95ed47a90c3a5b6b9124e51b6bc82ef2d1199
+SHA256: 3f203eb9c175f9683f37c8e291c69b6ce4b3689841484ccb4d6768b565cc2873
 Section: utils
 Priority: optional
 Homepage: https://github.com/NurRobin/ccs
 Description: Claude Code Session manager
  Manages Claude Code sessions inside dedicated tmux sessions with
  descriptions, fuzzy attach, scheduled cron jobs, and sensible tmux
- defaults. Sessions run on an isolated tmux socket.
+ defaults. Sessions run on an isolated tmux socket. Includes bash
+ and zsh tab completions.
 
