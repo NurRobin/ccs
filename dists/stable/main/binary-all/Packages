@@ -1,0 +1,19 @@
+Package: cc
+Version: 1.0.0
+Architecture: all
+Maintainer: Robin <robin@nurrobin.de>
+Depends: bash (>= 4.0), tmux (>= 3.0), cron
+Recommends: claude-code
+Filename: pool/main/c/cc/cc_1.0.0_all.deb
+Size: 6090
+MD5sum: 7147af99bd70476649840e576459144f
+SHA1: e6e6303522b0475d24edc4cdeb31bf2f1f3dc867
+SHA256: bbe861aeacd99eac74080240218746708906ed679fc2001ced8e7af2d7263fb5
+Section: utils
+Priority: optional
+Homepage: https://github.com/robinr2/cc
+Description: Claude Code tmux session manager
+ Manages Claude Code sessions inside tmux with descriptions,
+ fuzzy attach, scheduled cron jobs, and built-in tmux defaults
+ for mouse scrolling, truecolor, and large scrollback buffers.
+
