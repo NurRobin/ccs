@@ -2,9 +2,14 @@
 # ccs - Claude Code Session manager
 # Usage: ccs new [name] [desc]  |  ccs ls  |  ccs a [name]  |  ccs kill [name]
 
-CCS_VERSION="2.1.0"
+CCS_VERSION="2.2.0"
 
 set -euo pipefail
+
+# Exit codes
+EX_OK=0
+EX_ERR=1
+EX_USAGE=2
 
 # ── dependency check ───────────────────────────────────────────────────────────
 if ! command -v tmux &>/dev/null; then
@@ -14,12 +19,13 @@ if ! command -v tmux &>/dev/null; then
   exit 1
 fi
 
-# ── config ────────────────────────────────────────────────────────────────────
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/ccs"
+# ── config (overridable via env) ──────────────────────────────────────────────
+DATA_DIR="${CCS_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ccs}"
 META_FILE="$DATA_DIR/sessions.meta"
 SCHED_FILE="$DATA_DIR/schedules.meta"
 LOCK_FILE="$DATA_DIR/.lock"
-TMUX_SOCKET="ccs"
+TMUX_SOCKET="${CCS_SOCKET:-ccs}"
+LOG_MAX_LINES=1000
 
 # Migrate from older locations
 for old in "${XDG_CONFIG_HOME:-$HOME/.config}/ccs" \
@@ -38,8 +44,8 @@ trap 'rm -f "${META_FILE}.tmp" "${SCHED_FILE}.tmp" "$DATA_DIR/.crontab.tmp"' EXI
 
 # ── output helpers ────────────────────────────────────────────────────────────
 
-# Disable colors when stdout is not a TTY (pipe, redirect)
-if [[ -t 1 ]]; then
+# Disable colors when NO_COLOR is set (https://no-color.org) or stdout is not a TTY
+if [[ -z "${NO_COLOR:-}" && -t 1 ]]; then
   _color() { printf "\033[%sm" "$1"; }
 else
   _color() { printf ""; }
@@ -78,7 +84,7 @@ _validate_name() {
   local name="$1"
   if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
     _err "${RED}Invalid name '${name}' — must start with letter/digit, then letters, digits, - or _.${RESET}"
-    return 1
+    return "$EX_USAGE"
   fi
 }
 
@@ -155,6 +161,19 @@ _schedule_exists() {
   awk -F'|' -v n="$1" '$1 == n { found=1; exit } END { exit !found }' "$SCHED_FILE" 2>/dev/null
 }
 
+# ── log rotation ─────────────────────────────────────────────────────────────
+
+_rotate_log() {
+  local logfile="$1"
+  [[ ! -f "$logfile" ]] && return
+  local lines
+  lines=$(wc -l < "$logfile" | tr -d ' ')
+  if (( lines > LOG_MAX_LINES )); then
+    tail -n "$LOG_MAX_LINES" "$logfile" > "${logfile}.tmp"
+    mv "${logfile}.tmp" "$logfile"
+  fi
+}
+
 # ── session helpers ──────────────────────────────────────────────────────────
 
 _session_exists() { _tmux has-session -t "=$1" 2>/dev/null; }
@@ -224,12 +243,13 @@ EOF
 # ── subcommands ────────────────────────────────────────────────────────────────
 
 cmd_new() {
+  [[ "${1:-}" == "--" ]] && shift
   local default_name; default_name="$(basename "$PWD")"
   local name="${1:-$default_name}"
   shift 2>/dev/null || true
   local desc="${*:-}"
 
-  _validate_name "$name" || return 1
+  _validate_name "$name" || return $?
 
   if [[ -z "$desc" ]]; then
     printf "${YELLOW}Description${RESET} (optional, Enter to skip): " >&2
@@ -306,6 +326,7 @@ cmd_ls() {
 }
 
 cmd_attach() {
+  [[ "${1:-}" == "--" ]] && shift
   local input="${1:-}"
 
   if [[ -z "$input" ]]; then
@@ -333,6 +354,7 @@ cmd_attach() {
 }
 
 cmd_kill() {
+  [[ "${1:-}" == "--" ]] && shift
   local input="${1:-}"
 
   if [[ -z "$input" ]]; then
@@ -380,6 +402,7 @@ cmd_cron_run() {
 
   local logfile="$DATA_DIR/cron.log"
   local ts; ts="$(date '+%Y-%m-%d %H:%M')"
+  _rotate_log "$logfile"
 
   if [[ "$skip" == "yes" ]] && _session_exists "$name"; then
     echo "[$ts] [SKIP] '${name}' still running" >> "$logfile"
@@ -467,7 +490,7 @@ cmd_schedule() {
 
       printf "${CYAN}Job name${RESET} (e.g. daily-review): " >&2
       local name; read -r name
-      _validate_name "$name" || return 1
+      _validate_name "$name" || return $?
 
       echo "" >&2
       echo "  ${CYAN}1${RESET}  Slash command  (e.g. /entslopment, /pr-review)" >&2
@@ -557,7 +580,7 @@ cmd_schedule() {
 
     rm)
       local name="${1:-}"
-      [[ -z "$name" ]] && { _err "${RED}Usage: ccs schedule rm <name>${RESET}"; return 1; }
+      [[ -z "$name" ]] && { _err "${RED}Usage: ccs schedule rm <name>${RESET}"; return "$EX_USAGE"; }
 
       if ! _schedule_exists "$name"; then
         _err "${RED}No schedule named '${name}' found.${RESET}"

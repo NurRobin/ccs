@@ -1,9 +1,10 @@
-.TH CCS 1 "March 2026" "ccs 2.1.0" "User Commands"
+.TH CCS 1 "March 2026" "ccs 2.2.0" "User Commands"
 .SH NAME
 ccs \- Claude Code Session manager
 .SH SYNOPSIS
 .B ccs
 .RI [ command ]
+.RI [ \-\- ]
 .RI [ args... ]
 .SH DESCRIPTION
 .B ccs
@@ -15,7 +16,9 @@ Sessions run on a dedicated tmux socket
 isolated from regular tmux usage. Mouse scrolling, truecolor, and
 50k-line scrollback are configured automatically.
 .PP
-ANSI colors are disabled when stdout is not a terminal.
+ANSI colors are disabled when stdout is not a terminal or when the
+.B NO_COLOR
+environment variable is set.
 .SH COMMANDS
 .TP
 .BR new " [" name "] [" description ]
@@ -40,27 +43,42 @@ that no longer exist in tmux).
 .TP
 .B schedule add
 Interactive wizard to create a scheduled cron job.
-Prompts for name, prompt source, frequency, working directory,
-and skip\-if\-running behavior.
 .TP
 .B schedule ls
 List all scheduled jobs with status.
 .TP
 .BR "schedule rm" " " name
-Remove a scheduled job and its crontab entry.
-Fails if the named schedule does not exist.
+Remove a scheduled job. Fails if the named schedule does not exist.
 .TP
 .B log
 Show cron execution history (last 40 entries).
 .TP
 .BR \-v ", " \-\-version
 Print version.
+.PP
+All commands that take positional arguments accept
+.B \-\-
+to separate options from arguments.
 .SH SMART DISPATCH
 Running
 .B ccs
 with no arguments behaves contextually:
 no sessions shows help, one session attaches directly,
 multiple sessions lists them.
+.SH EXIT CODES
+.TP
+.B 0
+Success.
+.TP
+.B 1
+General error (session not found, file missing, etc.).
+.TP
+.B 2
+Usage error (invalid arguments, bad session name).
+.SH TAB COMPLETION
+Bash and zsh completions are installed automatically with the
+deb package. They provide completion for commands, session names,
+and schedule names.
 .SH FILES
 .TP
 .I ~/.local/share/ccs/sessions.meta
@@ -70,11 +88,21 @@ Session metadata (name, description, directory).
 Scheduled job definitions.
 .TP
 .I ~/.local/share/ccs/cron.log
-Cron execution log.
+Cron execution log (auto\-rotated at 1000 lines).
 .SH ENVIRONMENT
+.TP
+.B CCS_DATA_DIR
+Override the data directory (default: $XDG_DATA_HOME/ccs).
+.TP
+.B CCS_SOCKET
+Override the tmux socket name (default: ccs).
 .TP
 .B XDG_DATA_HOME
 Base directory for application data (default: ~/.local/share).
+.TP
+.B NO_COLOR
+If set (to any value), disables colored output.
+See https://no\-color.org.
 .SH DEPENDENCIES
 .BR tmux (1),
 .BR bash (1),
