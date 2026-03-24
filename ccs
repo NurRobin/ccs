@@ -2,7 +2,7 @@
 # ccs - Claude Code Session manager
 # Usage: ccs new [name] [desc]  |  ccs ls  |  ccs a [name]  |  ccs kill [name]
 
-CCS_VERSION="2.2.1"
+CCS_VERSION="2.3.0"
 
 set -euo pipefail
 export LC_ALL=C
@@ -103,10 +103,29 @@ _save_meta() {
   local name="$1" desc dir
   desc=$(_sanitize_desc "$2")
   dir="$3"
+  local now; now=$(date '+%Y-%m-%d %H:%M')
   {
     flock -x 9
+    # Preserve existing created_at timestamp
+    local created
+    created=$(awk -F'|' -v n="$name" '$1 == n { print $4; exit }' "$META_FILE" 2>/dev/null)
+    [[ -z "$created" ]] && created="$now"
     awk -F'|' -v n="$name" '$1 != n' "$META_FILE" > "${META_FILE}.tmp" 2>/dev/null || true
-    echo "${name}|${desc}|${dir}" >> "${META_FILE}.tmp"
+    echo "${name}|${desc}|${dir}|${created}|${now}" >> "${META_FILE}.tmp"
+    mv "${META_FILE}.tmp" "$META_FILE"
+  } 9>"$LOCK_FILE"
+}
+
+_touch_meta() {
+  local name="$1"
+  local now; now=$(date '+%Y-%m-%d %H:%M')
+  {
+    flock -x 9
+    awk -F'|' -v n="$name" -v t="$now" '
+      BEGIN { OFS="|" }
+      $1 == n { $5 = t }
+      { print }
+    ' "$META_FILE" > "${META_FILE}.tmp" 2>/dev/null || true
     mv "${META_FILE}.tmp" "$META_FILE"
   } 9>"$LOCK_FILE"
 }
@@ -290,6 +309,8 @@ cmd_ls() {
   declare -A dir_sessions
   declare -A session_status
   declare -A session_desc
+  declare -A session_created
+  declare -A session_accessed
 
   while IFS=: read -r sname attached; do
     [[ -z "$sname" ]] && continue
@@ -297,21 +318,29 @@ cmd_ls() {
     local status="Detached"
     (( attached > 0 )) 2>/dev/null && status="Attached"
 
-    local dir desc
+    local dir desc created accessed
     dir=$(_get_meta "$sname" 3)
     [[ -z "$dir" ]] && dir="unknown"
     desc=$(_get_meta "$sname" 2)
     [[ -z "$desc" ]] && desc="-"
+    created=$(_get_meta "$sname" 4)
+    [[ -z "$created" ]] && created="--"
+    accessed=$(_get_meta "$sname" 5)
+    [[ -z "$accessed" ]] && accessed="--"
 
     session_status["$sname"]="$status"
     session_desc["$sname"]="$desc"
+    session_created["$sname"]="$created"
+    session_accessed["$sname"]="$accessed"
     dir_sessions["$dir"]+="${sname},"
   done <<< "$sessions"
 
   echo ""
+  printf "  ${DIM}%-20s %-12s %-18s %-18s %s${RESET}\n" \
+    "NAME" "STATUS" "CREATED" "LAST USED" "DESCRIPTION"
   for dir in "${!dir_sessions[@]}"; do
     local display_dir="${dir/#$HOME/\~}"
-    printf "${BOLD}${CYAN}%s${RESET}\n" "$display_dir"
+    printf "\n${BOLD}${CYAN}%s${RESET}\n" "$display_dir"
 
     IFS=',' read -ra names <<< "${dir_sessions[$dir]}"
     for name in "${names[@]}"; do
@@ -319,11 +348,11 @@ cmd_ls() {
       local st="${session_status[$name]}"
       local color="$DIM"
       [[ "$st" == "Attached" ]] && color="$GREEN"
-      printf "  ${color}%-20s${RESET} ${DIM}%-12s${RESET} %s\n" \
-        "$name" "$st" "${session_desc[$name]}"
+      printf "  ${color}%-20s${RESET} ${DIM}%-12s${RESET} ${DIM}%-18s${RESET} ${DIM}%-18s${RESET} %s\n" \
+        "$name" "$st" "${session_created[$name]}" "${session_accessed[$name]}" "${session_desc[$name]}"
     done
-    echo ""
   done
+  echo ""
 }
 
 cmd_attach() {
@@ -350,6 +379,7 @@ cmd_attach() {
     return 1
   fi
 
+  _touch_meta "$resolved"
   _err "${GREEN}Attaching to '${resolved}'${RESET}"
   _tmux_attach "$resolved"
 }
